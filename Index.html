@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeu de Mémoire - Les Carrés Identiques</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --accent: #3498db;
+            --success: #2ecc71;
+            --bg: #ecf0f1;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            color: var(--primary);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 { margin-bottom: 10px; }
+
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        select, button {
+            padding: 10px 15px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 1px solid #bdc3c7;
+            cursor: pointer;
+        }
+
+        button {
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        button:hover { background-color: #2980b9; }
+
+        .stats {
+            font-size: 18px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            display: flex;
+            gap: 20px;
+        }
+
+        .grid {
+            display: grid;
+            gap: 10px;
+            max-width: 600px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .card {
+            aspect-ratio: 1;
+            background-color: var(--primary);
+            border-radius: 8px;
+            cursor: pointer;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.5s;
+        }
+
+        .card.flipped {
+            transform: rotateY(180deg);
+        }
+
+        .card.matched {
+            background-color: var(--success);
+            pointer-events: none;
+            transform: rotateY(180deg);
+        }
+
+        .card::after {
+            content: attr(data-value);
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: white;
+            background-color: var(--accent);
+            border-radius: 8px;
+            backface-visibility: hidden;
+            transform: rotateY(180deg);
+        }
+
+        .card.matched::after {
+            background-color: var(--success);
+        }
+
+        .message {
+            margin-top: 20px;
+            font-size: 22px;
+            font-weight: bold;
+            color: var(--success);
+            min-height: 30px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Jeu de Mémoire</h1>
+    
+    <div class="controls">
+        <label for="difficulty">Difficulté :</label>
+        <select id="difficulty">
+            <option value="easy">Facile (4x4 - 8 Paires)</option>
+            <option value="medium" selected>Moyen (4x6 - 12 Paires)</option>
+            <option value="hard">Difficile (6x6 - 18 Paires)</option>
+        </select>
+        <button id="restart">Nouvelle Partie</button>
+    </div>
+
+    <div class="stats">
+        <div>Coups : <span id="moves">0</span></div>
+        <div>Paires trouvées : <span id="matches">0</span></div>
+        <div>Chrono : <span id="timer">00:00</span></div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+
+    <div class="message" id="message"></div>
+
+    <script>
+        const grid = document.getElementById('grid');
+        const difficultySelect = document.getElementById('difficulty');
+        const restartBtn = document.getElementById('restart');
+        const movesEl = document.getElementById('moves');
+        const matchesEl = document.getElementById('matches');
+        const timerEl = document.getElementById('timer');
+        const messageEl = document.getElementById('message');
+
+        const icons = ['🍎', '🍌', '🍇', '🍓', '🍒', '🥑', '🥦', '🌽', '🥕', '🍍', '🍉', '🥝', '🍋', '🍊', '🍐', '🍏', '🍑', '🥥'];
+
+        let config = {
+            easy: { rows: 4, cols: 4, pairs: 8 },
+            medium: { rows: 4, cols: 6, pairs: 12 },
+            hard: { rows: 6, cols: 6, pairs: 18 }
+        };
+
+        let flippedCards = [];
+        let moves = 0;
+        let matches = 0;
+        let lockBoard = false;
+        let totalPairs = 0;
+        let timer = 0;
+        let timerInterval = null;
+
+        function initGame() {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            timer = 0;
+
+            grid.innerHTML = '';
+            messageEl.textContent = '👀 Mémorise rapidement les cartes...';
+            flippedCards = [];
+            moves = 0;
+            matches = 0;
+            lockBoard = true;
+            movesEl.textContent = moves;
+            matchesEl.textContent = matches;
+            timerEl.textContent = formatTime(timer);
+
+            const diff = difficultySelect.value;
+            const currentConfig = config[diff];
+            totalPairs = currentConfig.pairs;
+
+            grid.style.gridTemplateColumns = `repeat(${currentConfig.cols}, 1fr)`;
+
+            let gameIcons = icons.slice(0, totalPairs);
+            let cardDeck = [...gameIcons, ...gameIcons];
+
+            cardDeck.sort(() => Math.random() - 0.5);
+
+            cardDeck.forEach(value => {
+                const card = document.createElement('div');
+                card.classList.add('card', 'flipped');
+                card.setAttribute('data-value', value);
+                card.addEventListener('click', flipCard);
+                grid.appendChild(card);
+            });
+
+            setTimeout(() => {
+                document.querySelectorAll('.card').forEach(card => card.classList.remove('flipped'));
+                messageEl.textContent = '⏱️ C’est parti !';
+                lockBoard = false;
+                startTimer();
+            }, 2000);
+        }
+
+        function flipCard() {
+            if (lockBoard) return;
+            if (this === flippedCards[0]) return;
+            if (this.classList.contains('matched') || this.classList.contains('flipped')) return;
+
+            this.classList.add('flipped');
+            flippedCards.push(this);
+
+            if (flippedCards.length === 2) {
+                moves++;
+                movesEl.textContent = moves;
+                checkMatch();
+            }
+        }
+
+        function checkMatch() {
+            let isMatch = flippedCards[0].dataset.value === flippedCards[1].dataset.value;
+
+            if (isMatch) {
+                disableCards();
+            } else {
+                unflipCards();
+            }
+        }
+
+        function disableCards() {
+            flippedCards[0].classList.add('matched');
+            flippedCards[1].classList.add('matched');
+            matches++;
+            matchesEl.textContent = matches;
+
+            if (matches === totalPairs) {
+                clearInterval(timerInterval);
+                messageEl.textContent = `🎉 Gagné ! Félicitations en ${moves} coups et ${formatTime(timer)}.`;
+            }
+
+            resetBoard();
+        }
+
+        function unflipCards() {
+            lockBoard = true;
+            setTimeout(() => {
+                flippedCards[0].classList.remove('flipped');
+                flippedCards[1].classList.remove('flipped');
+                resetBoard();
+            }, 1000);
+        }
+
+        function resetBoard() {
+            flippedCards = [];
+            lockBoard = false;
+        }
+
+        function startTimer() {
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timer++;
+                timerEl.textContent = formatTime(timer);
+            }, 1000);
+        }
+
+        function formatTime(totalSeconds) {
+            const minutes = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+            const seconds = String(totalSeconds % 60).padStart(2, '0');
+            return `${minutes}:${seconds}`;
+        }
+
+        difficultySelect.addEventListener('change', initGame);
+        restartBtn.addEventListener('click', initGame);
+
+        initGame();
+    </script>
+</body>
+</html>
